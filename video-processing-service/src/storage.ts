@@ -5,12 +5,16 @@ import { Storage } from '@google-cloud/storage'; // Google Cloud Storage client 
 import fs from 'fs'; // Node.js file system module
 import ffmpeg from 'fluent-ffmpeg'; // ffmpeg wrapper for Node.js
 import { resolve } from 'path';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
 
 //constants
 const storage = new Storage(); // Create a new Storage client
 
-const rawVideoBucketName = 'abhi-yt-raw-videos'; // The name of the bucket where raw videos are uploaded
-const processedVideoBucketName = 'abhi-yt-processed-videos'; // The name of the bucket where processed videos are stored
+const rawVideoBucketName = process.env.rawVideoBucketName || ""; // The name of the bucket where raw videos are uploaded
+const processedVideoBucketName = process.env.processedVideoBucketName || ""; // The name of the bucket where processed videos are stored
 
 
 //delete the file from the local storage after uploading to GCS to save space

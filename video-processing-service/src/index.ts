@@ -1,6 +1,7 @@
 import express from 'express';
 import ffmpeg from 'fluent-ffmpeg';
 import { convertVideo, createDirectories, deleteProcessedVideo, deleteRawVideo, downloadRawvideo, uploadProcessedVideo } from './storage';
+import { isVideoNew, setVideo } from './firestore';
 
 createDirectories();
 
@@ -25,6 +26,17 @@ app.post('/process-video', async  (req, res) => {
 
     const inputFileName = data.name; // Get the filename from the message
     const outputFileName = `processed-${inputFileName}`; // Set the output filename  
+    const videoId = inputFileName.split('.')[0]; // Get the video ID from the filename
+    
+    if (!isVideoNew(videoId)) { // Check if the video is new
+        return res.status(400).send('Bad Request: video already processing or processed');
+    } else {
+        await setVideo(videoId, {
+            id: videoId,
+            uid: videoId.split('-')[0],
+            status: 'processing'
+        })
+    }
 
     //Download the raw video from Cloud Storage
     await downloadRawvideo(inputFileName); 
@@ -44,6 +56,11 @@ app.post('/process-video', async  (req, res) => {
     // Upload the processed video to Cloud Storage
     await uploadProcessedVideo(outputFileName);
 
+    await setVideo(videoId, {
+        status: 'processed',
+        filename: outputFileName
+    });
+
     // Delete the raw and processed videos
     await Promise.all([
         deleteRawVideo(inputFileName),
@@ -58,3 +75,4 @@ const port = process.env.PORT || 3000;
 app.listen(port, () => {
     console.log(`Server started at http://localhost:${port}`);
 });
+

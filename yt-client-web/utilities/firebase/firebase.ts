@@ -1,6 +1,7 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User} from "firebase/auth";
+import { getFunctions } from "firebase/functions";
 import dotenv from 'dotenv';
 dotenv.config();
 
@@ -12,16 +13,18 @@ dotenv.config();
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 
 const firebaseConfig = {
-    apiKey: "AIzaSyApqMch9qRx_ltYVwLb_rl3U5hFAdbZdDA",
-    authDomain: "clone-9506c.firebaseapp.com",
-    projectId: "clone-9506c",
-    appId: "1:230001349920:web:dc2ce260ad05de01ef7345",
-    measurementId: "G-NP62D8SP34"
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+    appId: process.env.REACT_APP_FIREBASE_APP_ID,
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+export const functions = getFunctions();
+ 
 
 // Firebase Auth Functions
 

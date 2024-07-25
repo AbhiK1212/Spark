@@ -7,6 +7,7 @@ import { onAuthStateChange } from "@/utilities/firebase/firebase";
 import SignIn from "./sign-in";
 import { useEffect, useState } from "react";
 import { User } from "firebase/auth";
+import Upload from "./upload";
 
 export default function Navbar() {
    //closure
@@ -29,6 +30,7 @@ export default function Navbar() {
             </Link >
             {
                 //TODO: add a upload
+                user && <Upload/>
             }
             <SignIn user={user}/>
         </nav>
