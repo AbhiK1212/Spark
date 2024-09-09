@@ -1,5 +1,5 @@
-# Youtube_Clone
-Simple Youtube app built to learn GCP and Full-Stack Development 
+# Spark
+Simple video streaming app built to learn GCP and Full-Stack Development 
 
 # Tech Stack
 - TypeScript
