@@ -58,7 +58,7 @@ export default function Home() {
         </div>
 
         {/* Video Grid Skeleton */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6" data-testid="loading-spinner">
           {Array.from({ length: 8 }).map((_, i) => (
             <Card
               key={i}
@@ -99,6 +99,9 @@ export default function Home() {
           </h1>
           <p className="text-xl text-gray-600 mb-8 animate-fade-in-up">
             Upload, process, and share videos instantly!
+          </p>
+          <p className="text-lg text-gray-500 mb-8" data-testid="no-videos-message">
+            No videos yet
           </p>
 
           {/* Feature Cards */}
@@ -194,7 +197,7 @@ export default function Home() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6" data-testid="video-grid">
         {videos.map((video, index) => {
           const isOwner = user && video.uid === user.uid;
 

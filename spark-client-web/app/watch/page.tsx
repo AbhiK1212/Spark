@@ -125,7 +125,7 @@ function WatchContent() {
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <div className="animate-pulse">
+        <div className="animate-pulse" data-testid="video-loading">
           <div className="bg-gray-200 h-8 w-64 mb-4 rounded"></div>
           <div className="bg-gray-200 h-96 w-full rounded"></div>
         </div>
