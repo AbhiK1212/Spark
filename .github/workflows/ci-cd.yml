@@ -1,0 +1,425 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  release:
+    types: [ published ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Lint and Type Check
+  lint-and-typecheck:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd spark-client-web
+          npm ci
+          cd ../spark-api-service/functions
+          npm ci
+          cd ../../video-processing-service
+          npm ci
+
+      - name: Lint client code
+        run: |
+          cd spark-client-web
+          npm run lint
+
+      - name: Type check client code
+        run: |
+          cd spark-client-web
+          npm run type-check
+
+      - name: Lint API service
+        run: |
+          cd spark-api-service/functions
+          npm run lint
+
+      - name: Type check API service
+        run: |
+          cd spark-api-service/functions
+          npm run type-check
+
+      - name: Lint video processing service
+        run: |
+          cd video-processing-service
+          npm run lint
+
+      - name: Type check video processing service
+        run: |
+          cd video-processing-service
+          npm run type-check
+
+  # Unit Tests
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd spark-client-web
+          npm ci
+
+      - name: Run unit tests
+        run: |
+          cd spark-client-web
+          npm run test:coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./spark-client-web/coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+
+  # Integration Tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    services:
+      firebase-emulator:
+        image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
+        ports:
+          - 8080:8080
+        options: >-
+          --health-cmd "curl -f http://localhost:8080 || exit 1"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 3
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd spark-client-web
+          npm ci
+
+      - name: Start Firebase emulator
+        run: |
+          cd spark-api-service
+          firebase emulators:start --only functions,firestore &
+          sleep 30
+
+      - name: Run integration tests
+        run: |
+          cd spark-client-web
+          npm run test -- --include="**/integration/**"
+
+  # E2E Tests
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd spark-client-web
+          npm ci
+
+      - name: Install Playwright browsers
+        run: |
+          cd spark-client-web
+          npx playwright install --with-deps
+
+      - name: Build application
+        run: |
+          cd spark-client-web
+          npm run build
+
+      - name: Run E2E tests
+        run: |
+          cd spark-client-web
+          npm run test:e2e
+
+      - name: Upload E2E test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: playwright-report
+          path: spark-client-web/playwright-report/
+          retention-days: 30
+
+  # Security Scan
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run npm audit
+        run: |
+          cd spark-client-web
+          npm audit --audit-level=moderate
+          cd ../spark-api-service/functions
+          npm audit --audit-level=moderate
+          cd ../../video-processing-service
+          npm audit --audit-level=moderate
+
+  # Build Multi-Arch Docker Images
+  build-images:
+    name: Build Multi-Arch Images
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests, e2e-tests]
+    if: github.event_name == 'push' || github.event_name == 'release'
+    strategy:
+      matrix:
+        service: [client-web, api-service, video-processing]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./${{ matrix.service === 'client-web' && 'spark-client-web/Dockerfile' || matrix.service === 'api-service' && 'spark-api-service/Dockerfile' || 'video-processing-service/Dockerfile' }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Deploy to Staging
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build-images, security-scan]
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configure Docker for GCR
+        run: |
+          gcloud auth configure-docker
+
+      - name: Deploy to Cloud Run (Client)
+        run: |
+          gcloud run deploy spark-client-web \
+            --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-client-web:develop \
+            --platform managed \
+            --region us-central1 \
+            --allow-unauthenticated \
+            --set-env-vars="NODE_ENV=staging"
+
+      - name: Deploy to Cloud Run (API Service)
+        run: |
+          gcloud run deploy spark-api-service \
+            --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api-service:develop \
+            --platform managed \
+            --region us-central1 \
+            --allow-unauthenticated \
+            --set-env-vars="NODE_ENV=staging"
+
+      - name: Deploy to Cloud Run (Video Processing)
+        run: |
+          gcloud run deploy spark-video-processing \
+            --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-video-processing:develop \
+            --platform managed \
+            --region us-central1 \
+            --allow-unauthenticated \
+            --set-env-vars="NODE_ENV=staging"
+
+      - name: Deploy Firebase Functions
+        run: |
+          cd spark-api-service
+          firebase deploy --only functions --project ${{ secrets.FIREBASE_PROJECT_ID }}
+
+  # Deploy to Production
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build-images, security-scan]
+    if: github.ref == 'refs/heads/main' || github.event_name == 'release'
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Configure Docker for GCR
+        run: |
+          gcloud auth configure-docker
+
+      - name: Deploy to Cloud Run (Client)
+        run: |
+          gcloud run deploy spark-client-web \
+            --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-client-web:latest \
+            --platform managed \
+            --region us-central1 \
+            --allow-unauthenticated \
+            --set-env-vars="NODE_ENV=production"
+
+      - name: Deploy to Cloud Run (API Service)
+        run: |
+          gcloud run deploy spark-api-service \
+            --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api-service:latest \
+            --platform managed \
+            --region us-central1 \
+            --allow-unauthenticated \
+            --set-env-vars="NODE_ENV=production"
+
+      - name: Deploy to Cloud Run (Video Processing)
+        run: |
+          gcloud run deploy spark-video-processing \
+            --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-video-processing:latest \
+            --platform managed \
+            --region us-central1 \
+            --allow-unauthenticated \
+            --set-env-vars="NODE_ENV=production"
+
+      - name: Deploy Firebase Functions
+        run: |
+          cd spark-api-service
+          firebase deploy --only functions --project ${{ secrets.FIREBASE_PROJECT_ID }}
+
+      - name: Run smoke tests
+        run: |
+          # Add smoke tests here
+          echo "Running smoke tests..."
+
+      - name: Notify deployment
+        uses: 8398a7/action-slack@v3
+        if: always()
+        with:
+          status: ${{ job.status }}
+          channel: '#deployments'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+  # Performance Tests
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          cd spark-client-web
+          npm ci
+
+      - name: Run Lighthouse CI
+        run: |
+          cd spark-client-web
+          npx lhci autorun
+
+      - name: Upload Lighthouse results
+        uses: actions/upload-artifact@v3
+        with:
+          name: lighthouse-results
+          path: spark-client-web/.lighthouseci/
+
+  # Cleanup
+  cleanup:
+    name: Cleanup
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: always()
+    steps:
+      - name: Clean up old images
+        run: |
+          # Add cleanup logic for old Docker images
+          echo "Cleaning up old images..."

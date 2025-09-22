@@ -1,0 +1,8 @@
+<svg width="120" height="40" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Lightning bolt -->
+  <path d="M8 12L16 8L12 20L20 16L8 12Z" fill="#F7B500" stroke="#1A1A1A" stroke-width="1"/>
+  <!-- Play triangle -->
+  <path d="M24 10L32 15L24 20V10Z" fill="#F7B500"/>
+  <!-- Spark text -->
+  <text x="40" y="25" font-family="Inter, sans-serif" font-size="20" font-weight="700" fill="#1A1A1A">Spark</text>
+</svg>
